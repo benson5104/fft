@@ -16,13 +16,28 @@
 
 # 輸入檔案格式:
 
-1.確保訊號開始前的欄位有Label
+## multithread_with_updated_vectors.cpp
 
-2.下一欄為TIME	CH3	CH2	CH1等
+1. 確保訊號開始前的欄位有Label
 
-3.之後的欄位才為數據
+2. 下一欄為TIME	CH3	CH2	CH1等
+
+3. 之後的欄位才為數據
 
 範例:
+
 ![alt text](image.png)
+
+## Mmap.cpp
+
+1. 檔案前面不要有不相關的資料
+
+2. 以TIME行開始
+
+範例:
+
+![alt text](image-1.png)
+
+
 
 
