@@ -11,6 +11,7 @@
 #include <queue>
 #include <matplotlibcpp.h>
 #include "MemoryMapped.h"
+#include <charconv>
 
 namespace plt = matplotlibcpp;
 
@@ -37,43 +38,33 @@ int find_peak_index(const std::vector<float>& magnitudes);
 void plotFFT(const std::vector<float>& freq, const std::vector<float>& magnitude, int peak_index, const std::string& title, const std::string& color, int i);
 
 void readerThreadFunc(int numCol, MemoryMapped& dataChar) {
-    while (true)
-    {
-        time_t totalRead = 0;
-        auto  now_size = dataChar.size();
-        while (true) {
-            auto start = clock();
-            auto data = read_csv(numCol, dataChar);
-            totalRead += clock() - start;
-            if (data[0][1] == 0) {
-                break;
-            }
-            std::unique_lock<std::mutex> lock(queueMutex);
-            //auto push = clock();
-
-            dataQueue.push(data);
-            //std::cout << "move to queue:  " << clock() - push << '\n';
-
-            lock.unlock();
-            dataCondition.notify_one();
-
-        }
-        doneReading = true;
-        dataCondition.notify_all();
-        std::cout << "read_file: " << totalRead << '\n';
-        dataChar.open(inputFile);
-        if (now_size == dataChar.size())
-        {
+    time_t totalRead = 0;
+    auto  now_size = dataChar.size();
+    while (true) {
+        auto start = clock();
+        auto data = read_csv(numCol, dataChar);
+        totalRead += clock() - start;
+        if (data[0][1] == 0) {
             break;
         }
+        std::unique_lock<std::mutex> lock(queueMutex);
+        //auto push = clock();
+
+        dataQueue.push(data);
+        //std::cout << "move to queue:  " << clock() - push << '\n';
+
+        lock.unlock();
+        dataCondition.notify_one();
+
     }
-
-
+    doneReading = true;
+    dataCondition.notify_all();
+    std::cout << "read_file: " << totalRead*5 << '\n';
 }
 
 void processorThreadFunc(int numChannels) {
-    //auto read_start = clock();
-    while (true) { 
+    int totalTime = 0;
+    while (true) {
         std::vector<std::vector<float>> data;
 
         std::unique_lock<std::mutex> lock(queueMutex);
@@ -87,12 +78,14 @@ void processorThreadFunc(int numChannels) {
         dataQueue.pop();
 
         //std::cout << "running fft " << std::endl;
+        auto read_start = clock();
         FFTfunction(data, numChannels);
+        totalTime += clock() - read_start;
     }
-    //std::cout << "read time: " << clock() - read_start << '\n';
+    std::cout << "process time: " << totalTime*5 << '\n';
 }
 
-
+int totalstof = 0;
 int count = 0;
 int main() {
     std::cout << "Enter the number of channels (excluding time): ";
@@ -107,9 +100,9 @@ int main() {
     device = getDevice(useGPU);
     MemoryMapped dataChar(inputFile);
     //std::cout << "data.size() =  " << data.size() << std::endl;
-    if (dataChar.isValid() {
+    if (dataChar.isValid()) {
         while (count < dataChar.size()) {
-            if (dataChar[count] == 'T' /*&& dataChar[count + 1] == 'I' && dataChar[count + 2] == 'M' && dataChar[count + 3] == 'E'*/) {
+            if (dataChar[count] == 'T' && (dataChar[count + 1] == 'I' || dataChar[count + 1] == 'i')) {
                 break;
             }
             count++;
@@ -117,18 +110,17 @@ int main() {
 
         //std::cout << "data[count + 4]  " << data[count + 5] << std::endl;
         count = count + 4;
-        while (true) {
-            if (dataChar[count] == '\n') {
-                break;
+            while (true) {
+                if (dataChar[count] == '\n') {
+                    break;
+                }
+                count++;
             }
-            count++;
-        }
         count++;
     }
     else
     {
-        nigger
-        cout << "file not found!";
+        std::cout << "file not found!";
         system("pause");
         return 0;
     }
@@ -140,58 +132,64 @@ int main() {
     readerThread.join();
     processorThread.join();
 
-    std::cout << "time: " << (clock() - start) * 5;
+    std::cout << "time: " << (clock() - start)*12.5 << '\n';
+    std::cout << "stof: " << totalstof * 12.5 << '\n';
     //std::cout << "picCount: " << picCount;
 
     system("pause");
     return 0;
 }
 
-int readCount = 0;
 std::vector<std::vector<float>> read_csv(int numcol, MemoryMapped& dataChar) {
-    std::vector<std::vector<float>> datas(numcol,std::vector<float>(4000,0));  // 创建numcol个向量，每个用于存储一列的数据
-    std::string buff = "";  // 用于存储当前正在处理的数字
+    std::vector<std::vector<float>> datas(numcol, std::vector<float>(4000, 0));  // 创建numcol个向量，每个用于存储一列的数据
+    //std::string buff = "";  // 用于存储当前正在处理的数字
+    char buff[32];
     int currentCol = 0;  // 用于追踪当前列
     int lineCount = 0;  // 用于记录当前的行数
+    int numberLength = 0;
     // 追踪 MemoryMapped 中的字符位置
 
     while (count < dataChar.size() && lineCount < 4000) {  // 限制读取的行数
         char ch = dataChar[count];
         if (ch == ',') {
             // 遇到逗号，转换buff为float并放入当前列
-            if (!buff.empty() && buff != "\r") {
+            if (numberLength != 0 && buff[0] != '\r') {
                 if (currentCol < numcol) {
                     //std::cout << datas[currentCol].size() << ' ' << lineCount << buff << '\n';
-                    datas[currentCol][lineCount] = (std::stof(buff));  // 将值存入当前列
+                     std::from_chars(buff,buff+numberLength, datas[currentCol][lineCount]);  // 将值存入当前列
                 }
-                buff.clear();
+                numberLength = 0;
             }
             currentCol = currentCol + 1;
         }
         else if (ch == '\n') {
             // 遇到换行符，转换最后一个元素并重置列索引
-            if (!buff.empty() && buff != "\r") {
+            if (numberLength != 0 && buff[0] != '\r') {
                 if (currentCol < numcol) {
-                    datas[currentCol][lineCount] = (std::stof(buff));  // 将值存入当前列
+                    //std::cout << datas[currentCol].size() << ' ' << lineCount << buff << '\n';
+                    std::from_chars(buff, buff + numberLength, datas[currentCol][lineCount]);  // 将值存入当前列
                 }
-                buff.clear();
+                numberLength = 0;
             }
             lineCount++;  // 增加行数
             currentCol = 0;  // 重置列索引以处理下一行
         }
         else {
-            buff += ch;  // 累积字符到buff
+            buff[numberLength] = ch;  // 累积字符到buff
+            numberLength++;
         }
         count++;
     }
 
     // 如果最后一行没有换行符也要处理
-    if (!buff.empty() && buff != "\r") {
+    if (numberLength!= 0 && buff[0] != '\r') {
         datas[currentCol][lineCount] = (std::stof(buff));
     }
     //std::cout << "readCount = " << readCount << std::endl;
     return datas;
 }
+
+
 
 void FFTfunction(std::vector<std::vector<float>> data, int numChannels) {
     //std::cout << picCount << '\n';
@@ -218,12 +216,15 @@ void FFTfunction(std::vector<std::vector<float>> data, int numChannels) {
             continue;
         }
 
+
         torch::Tensor time_tensor = torch::fft::fft(data_tensors[0].to(device));
         torch::Tensor fft_result = torch::fft::fft(data_tensors[i].to(device));
         torch::Tensor fft_freq = torch::fft::fftfreq(data_tensors[i].size(0), deltaT).to(device);
-        time_t fft = clock();
-        
-         
+
+
+        //time_t fft = clock();
+
+
         //fft_result = fft_result.to(torch::kCPU);
         //fft_freq = fft_freq.to(torch::kCPU);
 
